@@ -1,9 +1,9 @@
 package main
 
 import (
+    "time"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"github.com/marcusolsson/tui-go"
 	"io/ioutil"
 	"net/http"
@@ -47,7 +47,9 @@ func (f *DeviceResult) UnmarshalJSON(bs []byte) error {
 
 var lights = []DeviceInfo{}
 
-func getDeviceState() DeviceResult {
+var deviceTable *tui.Table
+
+func getDeviceState() *DeviceResult {
 	url := "http://home-assistant.lan.productionservers.net:8123/api/states"
 
 	res, err := http.Get(url)
@@ -62,18 +64,19 @@ func getDeviceState() DeviceResult {
 	//fmt.Printf("Byte Array: %#v\n\n", body[:])
 	json.Unmarshal(body[:], &keys)
 	//fmt.Printf("Parsed: %#v\n", keys)
-	return keys
+	return &keys
 }
 
-func toggleLight(d *DeviceInfo) {
+func toggleLight(d int, t *tui.Table) {
+    l := lights[t.Selected()]
 	url := ""
-	isOn, _ := regexp.MatchString("^on$", d.State)
+	isOn, _ := regexp.MatchString("^on$", l.State)
 	if isOn {
 		url = "http://home-assistant.lan.productionservers.net:8123/api/services/light/turn_off"
-		d.State = "off"
+		l.State = "off"
 	} else {
 		url = "http://home-assistant.lan.productionservers.net:8123/api/services/light/turn_on"
-		d.State = "on"
+		l.State = "on"
 	}
 
 	type SimpleJson struct {
@@ -81,11 +84,12 @@ func toggleLight(d *DeviceInfo) {
 	}
 
 	j := SimpleJson{
-		Id: d.Id,
+		Id: l.Id,
 	}
 
 	b, _ := json.Marshal(&j)
-	fmt.Printf("Json: %s\n", b)
+    //fmt.Printf("Whatever: %s\n", t[d])
+	//fmt.Printf("Json: %s\n", b)
 	r := bytes.NewReader(b)
 
 	req, _ := http.NewRequest("POST", url, r)
@@ -93,16 +97,17 @@ func toggleLight(d *DeviceInfo) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	perror(err)
-	defer resp.Body.Close()
+	resp.Body.Close()
+    //refreshScreen()
 
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Printf("%s\n", body)
+	//body, _ := ioutil.ReadAll(resp.Body)
+	//fmt.Printf("%s\n", body)
 }
 
 func getScreen() *tui.Box {
-	home := tui.NewTable(0, 0)
-	home.SetColumnStretch(0, 0)
-	home.SetColumnStretch(1, 0)
+	deviceTable = tui.NewTable(0, 0)
+	deviceTable.SetColumnStretch(0, 0)
+	deviceTable.SetColumnStretch(1, 0)
 
 	devices := getDeviceState()
 	for devicePos := range devices.Devices {
@@ -114,9 +119,10 @@ func getScreen() *tui.Box {
 			//			fmt.Printf("Friendly Name: %s\n", device.Attributes.FriendlyName)
 			//			fmt.Printf("\n")
 			lights = append(lights, device)
-			home.AppendRow(
+			deviceTable.AppendRow(
 				tui.NewLabel(device.Attributes.FriendlyName),
 				tui.NewLabel(device.State),
+                tui.NewLabel(device.Attributes.ModelName),
 			)
 		}
 	}
@@ -127,29 +133,53 @@ func getScreen() *tui.Box {
 		modelname    = tui.NewLabel("")
 	)
 
-	info := tui.NewGrid(0, 0)
-	info.AppendRow(tui.NewLabel("Device Name:"), devicename)
-	info.AppendRow(tui.NewLabel("Manufacturer:"), manufacturer)
-	info.AppendRow(tui.NewLabel("Model Name:"), modelname)
-
-	rdevice := tui.NewVBox(info)
-	rdevice.SetSizePolicy(tui.Preferred, tui.Expanding)
-
-	home.OnSelectionChanged(func(t *tui.Table) {
+	deviceTable.OnSelectionChanged(func(t *tui.Table) {
 		l := lights[t.Selected()]
 		devicename.SetText(l.Attributes.FriendlyName)
 		manufacturer.SetText(l.Attributes.Manufacturer)
 		modelname.SetText(l.Attributes.ModelName)
 	})
 
-	home.Select(0)
-	home.OnItemActivated(func(t *tui.Table) {
-		l := lights[t.Selected()]
-		toggleLight(&l)
+	deviceTable.Select(0)
+	deviceTable.OnItemActivated(func(t *tui.Table) {
+		//l := lights[t.Selected()]
+		toggleLight(t.Selected(), t)
 	})
 
-	root := tui.NewVBox(home, tui.NewLabel(""), rdevice)
+	root := tui.NewVBox(deviceTable, tui.NewLabel(""))
+    go startRefreshing()
 	return root
+}
+
+func refreshScreen() {
+    mySelected := deviceTable.Selected()
+    deviceTable.RemoveRows()
+    devices := getDeviceState()
+    lights = []DeviceInfo{}
+	for devicePos := range devices.Devices {
+		device := devices.Devices[devicePos]
+		isLight, _ := regexp.MatchString("(^on$|^off$)", device.State)
+		if isLight {
+			//			fmt.Printf("ID: %s\n", device.Id)
+			//			fmt.Printf("State: %s\n", device.State)
+			//			fmt.Printf("Friendly Name: %s\n", device.Attributes.FriendlyName)
+			//			fmt.Printf("\n")
+			lights = append(lights, device)
+			deviceTable.AppendRow(
+				tui.NewLabel(device.Attributes.FriendlyName),
+				tui.NewLabel(device.State),
+                tui.NewLabel(device.Attributes.ModelName),
+			)
+		}
+	}
+    deviceTable.SetSelected(mySelected)
+}
+
+func startRefreshing() {
+    for {
+        time.Sleep(10 * time.Second)
+        refreshScreen()
+    }
 }
 
 func main() {
@@ -157,6 +187,10 @@ func main() {
 	ui := tui.New(root)
 	ui.SetKeybinding("Esc", func() { ui.Quit() })
 	ui.SetKeybinding("Shift+Alt+Up", func() { ui.Quit() })
+	ui.SetKeybinding("q", func() { ui.Quit() })
+    ui.SetKeybinding("r", func () {
+        refreshScreen()
+    })
 
 	if err := ui.Run(); err != nil {
 		panic(err)
