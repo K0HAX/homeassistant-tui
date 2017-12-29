@@ -1,13 +1,13 @@
 package main
 
 import (
-    "time"
 	"bytes"
 	"encoding/json"
 	"github.com/marcusolsson/tui-go"
 	"io/ioutil"
 	"net/http"
 	"regexp"
+	"time"
 )
 
 type DeviceInfo struct {
@@ -58,17 +58,13 @@ func getDeviceState() *DeviceResult {
 	body, err := ioutil.ReadAll(res.Body)
 	perror(err)
 
-	//fmt.Printf("Unparsed: %s\n\n", string(body[:]))
-
 	keys := DeviceResult{}
-	//fmt.Printf("Byte Array: %#v\n\n", body[:])
 	json.Unmarshal(body[:], &keys)
-	//fmt.Printf("Parsed: %#v\n", keys)
 	return &keys
 }
 
 func toggleLight(d int, t *tui.Table) {
-    l := lights[t.Selected()]
+	l := lights[t.Selected()]
 	url := ""
 	isOn, _ := regexp.MatchString("^on$", l.State)
 	if isOn {
@@ -88,8 +84,6 @@ func toggleLight(d int, t *tui.Table) {
 	}
 
 	b, _ := json.Marshal(&j)
-    //fmt.Printf("Whatever: %s\n", t[d])
-	//fmt.Printf("Json: %s\n", b)
 	r := bytes.NewReader(b)
 
 	req, _ := http.NewRequest("POST", url, r)
@@ -98,10 +92,6 @@ func toggleLight(d int, t *tui.Table) {
 	resp, err := client.Do(req)
 	perror(err)
 	resp.Body.Close()
-    //refreshScreen()
-
-	//body, _ := ioutil.ReadAll(resp.Body)
-	//fmt.Printf("%s\n", body)
 }
 
 func getScreen() *tui.Box {
@@ -114,15 +104,11 @@ func getScreen() *tui.Box {
 		device := devices.Devices[devicePos]
 		isLight, _ := regexp.MatchString("(^on$|^off$)", device.State)
 		if isLight {
-			//			fmt.Printf("ID: %s\n", device.Id)
-			//			fmt.Printf("State: %s\n", device.State)
-			//			fmt.Printf("Friendly Name: %s\n", device.Attributes.FriendlyName)
-			//			fmt.Printf("\n")
 			lights = append(lights, device)
 			deviceTable.AppendRow(
 				tui.NewLabel(device.Attributes.FriendlyName),
 				tui.NewLabel(device.State),
-                tui.NewLabel(device.Attributes.ModelName),
+				tui.NewLabel(device.Attributes.ModelName),
 			)
 		}
 	}
@@ -142,44 +128,39 @@ func getScreen() *tui.Box {
 
 	deviceTable.Select(0)
 	deviceTable.OnItemActivated(func(t *tui.Table) {
-		//l := lights[t.Selected()]
 		toggleLight(t.Selected(), t)
 	})
 
 	root := tui.NewVBox(deviceTable, tui.NewLabel(""))
-    go startRefreshing()
+	go startRefreshing()
 	return root
 }
 
 func refreshScreen() {
-    mySelected := deviceTable.Selected()
-    deviceTable.RemoveRows()
-    devices := getDeviceState()
-    lights = []DeviceInfo{}
+	mySelected := deviceTable.Selected()
+	deviceTable.RemoveRows()
+	devices := getDeviceState()
+	lights = []DeviceInfo{}
 	for devicePos := range devices.Devices {
 		device := devices.Devices[devicePos]
 		isLight, _ := regexp.MatchString("(^on$|^off$)", device.State)
 		if isLight {
-			//			fmt.Printf("ID: %s\n", device.Id)
-			//			fmt.Printf("State: %s\n", device.State)
-			//			fmt.Printf("Friendly Name: %s\n", device.Attributes.FriendlyName)
-			//			fmt.Printf("\n")
 			lights = append(lights, device)
 			deviceTable.AppendRow(
 				tui.NewLabel(device.Attributes.FriendlyName),
 				tui.NewLabel(device.State),
-                tui.NewLabel(device.Attributes.ModelName),
+				tui.NewLabel(device.Attributes.ModelName),
 			)
 		}
 	}
-    deviceTable.SetSelected(mySelected)
+	deviceTable.SetSelected(mySelected)
 }
 
 func startRefreshing() {
-    for {
-        time.Sleep(10 * time.Second)
-        refreshScreen()
-    }
+	for {
+		time.Sleep(10 * time.Second)
+		refreshScreen()
+	}
 }
 
 func main() {
@@ -188,9 +169,9 @@ func main() {
 	ui.SetKeybinding("Esc", func() { ui.Quit() })
 	ui.SetKeybinding("Shift+Alt+Up", func() { ui.Quit() })
 	ui.SetKeybinding("q", func() { ui.Quit() })
-    ui.SetKeybinding("r", func () {
-        refreshScreen()
-    })
+	ui.SetKeybinding("r", func() {
+		refreshScreen()
+	})
 
 	if err := ui.Run(); err != nil {
 		panic(err)
